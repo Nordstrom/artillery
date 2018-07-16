@@ -50,6 +50,7 @@
     "deep-equal": "^1.0.1",
     "esprima": "^4.0.0",
     "filtrex": "^0.5.4",
+    "import-fresh": "^2.0.0",
     "js-yaml": "^3.10.0",
     "jsck": "^0.3.2",
     "lodash": "^4.17.2",
