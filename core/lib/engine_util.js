@@ -11,7 +11,7 @@ const esprima = require('esprima');
 const L = require('lodash');
 const vm = require('vm');
 const A = require('async');
-const jsonpath = require('JSONPath');
+const jsonpath = require('jsonpath-plus');
 const cheerio = require('cheerio');
 const jitter = require('./jitter').jitter;
 
