@@ -1,6 +1,6 @@
 {
   "name": "artillery",
-  "version": "1.6.0-18",
+  "version": "1.6.0-19",
   "description": "Flexible and powerful toolkit for load and functional testing",
   "main": "./lib",
   "engines": {
@@ -38,7 +38,7 @@
     "email": "npm@veldstra.org"
   },
   "dependencies": {
-    "JSONPath": "^0.11.2",
+    "jsonpath-plus": "^2.0.0",
     "arrivals": "^2.1.1",
     "artillery-plugin-statsd": "^2.2.0",
     "async": "^1.5.2",
