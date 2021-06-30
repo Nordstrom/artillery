@@ -40,7 +40,7 @@ function validate(script) {
   return validation;
 }
 
-function runner(script, payload, options, callback) {
+async function runner(script, payload, options, callback) {
   let opts = _.assign({
     periodicStats: script.config.statsInterval || 10,
     mode: script.config.mode || 'uniform'
@@ -119,6 +119,14 @@ function runner(script, payload, options, callback) {
         }
       }
   );
+
+  //
+  // compile and run before script
+  //
+  let contextVars;
+  if (script.before) {
+    contextVars = await handleBeforeRequests(script, runnableScript, runnerEngines, ee);
+  }
 
   //
   // load plugins:
@@ -205,7 +213,7 @@ function runner(script, payload, options, callback) {
         engines: runnerEngines
       };
       debug('run() with: %j', runnableScript);
-      run(runnableScript, ee, opts, runState);
+      run(runnableScript, ee, opts, runState, contextVars);
     };
 
     ee.stop = function (done) {
@@ -243,13 +251,13 @@ function runner(script, payload, options, callback) {
   return promise;
 }
 
-function run(script, ee, options, runState) {
+function run(script, ee, options, runState, contextVars) {
   let intermediate = Stats.create();
   let aggregate = [];
 
   let phaser = createPhaser(script.config.phases);
   phaser.on('arrival', function() {
-    runScenario(script, intermediate, runState);
+    runScenario(script, intermediate, runState, contextVars);
   });
   phaser.on('phaseStarted', function(spec) {
     ee.emit('phaseStarted', spec);
@@ -295,7 +303,7 @@ function run(script, ee, options, runState) {
   phaser.run();
 }
 
-function runScenario(script, intermediate, runState) {
+function runScenario(script, intermediate, runState, contextVars) {
   const start = process.hrtime();
 
   //
@@ -305,6 +313,19 @@ function runScenario(script, intermediate, runState) {
     _.each(script.scenarios, function(scenario) {
       if (!scenario.weight) {
         scenario.weight = 1;
+      } else {
+        debug(`scenario ${scenario.name} weight = ${scenario.weight}`);
+        const variableValues = Object.assign(
+          datafileVariables(script),
+          inlineVariables(script),
+          { $processEnvironment: process.env });
+
+        const w = engineUtil.template(
+          scenario.weight,
+          { vars: variableValues });
+        // eslint-disable-next-line radix
+        scenario.weight = isNaN(parseInt(w)) ? 0 : parseInt(w);
+        debug(`scenario ${scenario.name} weight has been set to ${scenario.weight}`);
       }
     });
 
@@ -359,7 +380,7 @@ function runScenario(script, intermediate, runState) {
   intermediate.newScenario(script.scenarios[i].name || i);
 
   const scenarioStartedAt = process.hrtime();
-  const scenarioContext = createContext(script);
+  const scenarioContext = createContext(script, contextVars);
   const finish = process.hrtime(start);
   const runScenarioDelta = (finish[0] * 1e9) + finish[1];
   debugPerf('runScenarioDelta: %s', Math.round(runScenarioDelta / 1e6 * 100) / 100);
@@ -376,18 +397,54 @@ function runScenario(script, intermediate, runState) {
   });
 }
 
+function datafileVariables(script) {
+  let result = {};
+  if (script.config.payload) {
+    _.each(script.config.payload, function(el) {
+
+      // If data = [] (i.e. the CSV file is empty, or only has headers and
+      // skipHeaders = true), then row could = undefined
+      let row = el.reader(el.data) || [];
+      _.each(el.fields, function(fieldName, j) {
+        result[fieldName] = row[j];
+      });
+    });
+  }
+  return result;
+}
+
+function inlineVariables(script) {
+  let result = {};
+  if (script.config.variables) {
+    _.each(script.config.variables, function(v, k) {
+      let val;
+      if (_.isArray(v)) {
+        val = _.sample(v);
+      } else {
+        val = v;
+      }
+      result[k] = val;
+    });
+  }
+  return result;
+}
+
 /**
  * Create initial context for a scenario.
  */
-function createContext(script) {
+function createContext(script, contextVars) {
   const INITIAL_CONTEXT = {
-    vars: {
+    vars: Object.assign(
+      {
       target: script.config.target,
-      $environment: script._environment
+      $environment: script._environment,
+      $processEnvironment: process.env
     },
+    contextVars || {}),
     funcs: {
       $randomNumber: $randomNumber,
-      $randomString: $randomString
+      $randomString: $randomString,
+      $template: input => engineUtil.template(input, { vars: result.vars })
     }
   };
   let result = _.cloneDeep(INITIAL_CONTEXT);
@@ -432,4 +489,29 @@ function $randomNumber(min, max) {
 
 function $randomString(length) {
   return Math.random().toString(36).substr(2, length);
+}
+
+function handleBeforeRequests(script, runnableScript, runnerEngines, testEvents) {
+  let ee = new EventEmitter();
+  return new Promise(function(resolve, reject){
+    ee.on('request', function() {
+      testEvents.emit('beforeTestRequest');
+    });
+    ee.on('error', function(error) {
+      testEvents.emit('beforeTestError', error);
+    });
+
+    let name = runnableScript.before.engine || 'http';
+    let engine = runnerEngines.find((e) => e.__name === name);
+    let beforeTestScenario = engine.createScenario(runnableScript.before, ee);
+    let beforeTestContext = createContext(script);
+    beforeTestScenario(beforeTestContext, function(err, context) {
+      if (err) {
+        debug(err);
+        return reject(err);
+      } else {
+        return resolve(context.vars);
+      }
+    });
+  });
 }

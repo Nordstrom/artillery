@@ -1,6 +1,6 @@
 {
   "name": "artillery",
-  "version": "1.6.0-18",
+  "version": "1.6.0-19",
   "description": "Flexible and powerful toolkit for load and functional testing",
   "main": "./lib",
   "engines": {
@@ -38,7 +38,6 @@
     "email": "npm@veldstra.org"
   },
   "dependencies": {
-    "JSONPath": "^0.11.2",
     "arrivals": "^2.1.1",
     "artillery-plugin-statsd": "^2.2.0",
     "async": "^1.5.2",
@@ -52,6 +51,7 @@
     "filtrex": "^0.5.4",
     "js-yaml": "^3.10.0",
     "jsck": "^0.3.2",
+    "jsonpath": "^1.0.2",
     "lodash": "^4.17.2",
     "moment": "^2.22.1",
     "nanotimer": "^0.3.15",
